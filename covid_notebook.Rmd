@@ -1,0 +1,728 @@
+---
+title: "R Notebook"
+output:
+  html_notebook: default
+---
+
+```{r}
+library("dplyr")
+library("ggplot2")
+library("tidyr")
+library("reshape")
+library("plotly")
+library("gganimate")
+library("gapminder")
+library("av")
+library("gifski")
+library("ggmap")
+library(tmap)    # for static and interactive maps
+library(leaflet) # for interactive maps
+library(mapview) # for interactive maps
+library(shiny)   # for web applications
+library(grid)
+library(choroplethr)
+library(choroplethrMaps)
+library(usmap)
+```
+
+
+
+Per Day reported cases graph across the world
+```{r}
+'&' <- function(x, y)paste0(x,y)
+Date_to_load<-20200419
+info <- read.csv ("D:\\Kaggle\\Covid\\latest", stringsAsFactors = T)
+info$dateRep<- gsub('-', '/',info$dateRep)
+info$dateRep<-as.Date.factor (info$dateRep,format="%d/%m/%Y")
+info$countriesAndTerritories<- gsub('United_States_of_America', 'U.S.A.',info$countriesAndTerritories)
+info$countriesAndTerritories<- gsub('_', ' ',info$countriesAndTerritories)
+info1<-arrange(info, dateRep)%>%group_by(dateRep)%>%summarize(total = sum(cases)/1000)%>%mutate(Cumm_total = cumsum(total))
+
+
+ggplot(info1,aes(x =dateRep , y = total))+ geom_point(data = info1,color = "red") + geom_line(data = info1,color = "red",size = 1) +ylab("Daily Total Count (in Thousands)")+xlab("Period")+ labs(title="Daily Covid-19 Reported Cases across world")
+
+# ggplot(info1,aes(x =dateRep , y = total, fill=dateRep))+ geom_point(data = info1) + geom_smooth(method = "loess") +ylab("Daily Total Count (in Thousands)")+xlab("Period")+ labs(title="Daily Covid-19 Reported Cases across world")+ geom_density2d()
+
+#  plot_ly(
+#   type='scatter',
+#   mode='markers',
+#   x=info1$dateRep,
+#   y=info1$total,
+#   name="Daily Reported cases"
+# )
+```
+
+Cummulative frequency across the world. We can see difference between the dots increasing which means frequency is increasing 
+```{r}
+ggplot(info1,aes(x =dateRep , y = as.integer(Cumm_total)))+ geom_point(data = info1,color = "red") + geom_line(data = info1,color = "red",size = 1) +ylab("Cummulative Total  (in Thousands)")+xlab("Period")+xlab("Period")+ labs(title="Cummulative reported cases across the world")
+```
+
+
+```{r}
+
+info1<-arrange(info, dateRep)%>%group_by(dateRep)%>%summarize(total = sum(deaths))%>%mutate(Cumm_total = cumsum(total))
+ggplot(info1,aes(x =dateRep , y = total))+ geom_point(data = info1,colour = "red") + geom_line(data = info1,color = "red",size = 1) +ylab("Daily Death Count")+xlab("Period")+xlab("Period")+ labs(title="Daily Covid-19 Reported Deaths across world")
+
+```
+
+```{r}
+ggplot(info1,aes(x =dateRep , y = as.integer(Cumm_total)))+ geom_point(data = info1,color = "red") + geom_line(data = info1,color = "red",size = 1) +ylab("Total Deaths Count")+xlab("Period")+xlab("Period")+ labs(title="Cummulative Reported Deaths across the world")
+```
+
+It has already reached in 192 Countries. 
+```{r}
+#info1<-data.frame(unique(info$countriesAndTerritories))    #Distinct Countries
+info1<-info%>%group_by(countriesAndTerritories)%>%summarize(total_cases = sum(cases), total_pop = max(popData2018), total_deaths=sum(deaths))
+
+info2<-top_n(info1,15,total_cases)
+info2$total_cases<-(info2$total_cases/1000)
+ggplot(info2,aes(x =countriesAndTerritories, y = total_cases, fill="red"))+ geom_col() + theme(axis.text.x=element_text(size=15, angle=90, hjust = 1, vjust = 0.5)) +xlab("Countries")+ylab("Total Cases Reported (in thousands)")+ labs(title="Countries with highest number of Covid-19 Cases")
+```
+
+
+```{r}
+info2<-top_n(info1,15,total_deaths)
+ggplot(info2,aes(x =countriesAndTerritories, y = total_deaths, fill="red"))+ geom_col() + theme(axis.text.x=element_text(size=15, angle=90, hjust = 1, vjust = 0.5 ))+xlab("Countries")+ylab("Total Deaths Reported")+ labs(title="Countries with highest number of Deaths")
+```
+
+```{r}
+
+info1[,"Cases_to_Popuation_Pct"]<-(info1$total_cases/info1$total_pop)*100
+info2<-filter(info1,total_cases>1000)%>% top_n(15,Cases_to_Popuation_Pct)
+ggplot(info2,aes(x =countriesAndTerritories, y = Cases_to_Popuation_Pct, fill="red"))+ geom_col() + theme(axis.text.x=element_text(size=15, angle=90, hjust = 1, vjust = 0.5 ))+xlab("Countries")+ylab("Percentage of Cases Reported to Total Popultion")+ labs(title="Countries with highest number of cases w.r.t. population")
+```
+
+
+```{r}
+info1[,"Deaths_to_Cases_Pct"]<-(info1$total_deaths/info1$total_cases)*100
+info2<-filter(info1,total_cases>1000)%>%top_n(15,Deaths_to_Cases_Pct)
+ggplot(info2,aes(x =countriesAndTerritories, y = Deaths_to_Cases_Pct, fill="red"))+ geom_col() + theme(axis.text.x=element_text(size=15, angle=90, hjust = 1, vjust = 0.5 ))+xlab("Countries")+ylab("Percentage of Deaths Reported to Total Cases")+ labs(title="Countries with highest number of Deaths w.r.t. Total Cases")
+```
+
+Counties with highest number of cases
+```{r}
+info2<-top_n(info1,6,total_cases)
+info2<-inner_join(info, info2,"countriesAndTerritories")
+t<-ggplot(info2,aes(x =dateRep , y = cases, color=countriesAndTerritories)) + geom_point() + geom_line() + ylab("Cases Per Day")+xlab("Period")+ labs(title="Countries with Highest number of Cases - Daily Count of reported cases")
+t+facet_wrap(~countriesAndTerritories) + guides(fill="none")
+```
+Counties with highest number of deaths
+```{r}
+info2<-top_n(info1,6,total_deaths)
+info2<-inner_join(info, info2,"countriesAndTerritories")
+t<-ggplot(info2,aes(x =dateRep , y = deaths, color=countriesAndTerritories)) + geom_point() + geom_line() + ylab("Deaths Per Day")+xlab("Period")+ labs(title="Countries with Highest number of Deaths Daily Count")
+t+facet_wrap(~countriesAndTerritories)
+
+```
+World view ---------------- should not delete
+```{r}
+
+info2<-arrange(info, countriesAndTerritories,dateRep)%>%group_by(countriesAndTerritories,dateRep)%>%summarize(total_cases = sum(cases),total_deaths = sum(deaths))%>%mutate(Cumm_total_cases = cumsum(total_cases),Cumm_total_deaths = cumsum(total_deaths))
+info1[,"category"]<-ifelse(info1$countriesAndTerritories == "China","Recovering",
+                          ifelse(info1$countriesAndTerritories == "South Korea", "Recovering",
+                                 ifelse(info1$total_cases>=10000,">= 10000","< 10000")))
+info2<-inner_join(info1,info2,"countriesAndTerritories")
+t<-ggplot(info2,aes(x =dateRep , y = Cumm_total_cases, color=category)) + geom_point() + geom_line() + ylab("Total Cases")+xlab("Period")+ labs(title="All Countries Data")+scale_color_manual(values=c('blue','red','green'))
+t+facet_wrap(~countriesAndTerritories)
+
+```
+How it started for the coutries in red
+
+```{r}
+
+# info3<-filter(info2,category==">= 10000")
+# 
+# p<-ggplot(info3, aes(Cumm_total_deaths,Cumm_total_cases , size = Cumm_total_cases, colour = countriesAndTerritories)) +
+#   geom_point(alpha = 0.7, show.legend = FALSE) +
+#   scale_colour_manual(values = c("green","blue","red","brown","black","orange","yellow","maroon")) +
+#   scale_size(range = c(2, 12)) +
+#   scale_x_log10() +
+#   facet_wrap(~countriesAndTerritories) +
+#   # Here comes the gganimate specific bits
+#   labs(title = 'Day: {frame_time}', x = 'Deaths', y = 'Cases') +
+#   transition_time(info3$dateRep) +
+#   ease_aes('linear')
+# 
+# animate(p, nframes = 100, fps=3)
+
+
+```
+
+
+
+Highest number of cases reported today
+```{r}
+info1<-filter(info,dateRep<as.Date.character(Date_to_load,format = "%Y%m%d"))%>%group_by(countriesAndTerritories)%>%summarize(total_cases = sum(cases), total_pop = max(popData2018), total_deaths=sum(deaths))
+info2<-filter(info,dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))%>%top_n(15,cases)
+info2<-inner_join(info1,info2,"countriesAndTerritories")
+fig <- plot_ly(info2, x = ~countriesAndTerritories, y = ~total_cases, type = 'bar',name='Total Till Yesterday',text = ~total_cases, textposition = 'auto')
+
+Date_to_load1<-as.Date.character(Date_to_load,format = "%Y%m%d")
+fig <- fig %>% add_trace(y = ~cases,name = 'Cases Reported Today',text = ~cases , textposition = 'auto')
+fig <- fig %>% layout(title = "Countries with Highest number of cases reported today ("&Date_to_load1&")", xaxis = list(title = 'Countries'), yaxis = list(title = 'Cases Count'), barmode = 'stack')
+
+fig
+
+```
+
+Highest number of deaths reported today
+```{r}
+info2<-filter(info,dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))%>%top_n(15,deaths)
+info2<-inner_join(info1,info2,"countriesAndTerritories")
+fig <- plot_ly(info2, x = ~countriesAndTerritories, y = ~total_deaths, type = 'bar',name='Total Deaths Till Yesterday',text = ~total_deaths, textposition = 'auto')
+Date_to_load1<-as.Date.character(Date_to_load,format = "%Y%m%d")
+fig <- fig %>% add_trace(y = ~deaths,name = 'Deaths Reported Today',text = ~deaths , textposition = 'auto')
+fig <- fig %>% layout(title = "Countries with Highest number of deaths reported today ("&Date_to_load1&")", xaxis = list(title = 'Countries'),yaxis = list(title = 'Death Count'), barmode = 'stack')
+
+fig
+```
+Country specific data
+```{r}
+
+country<-"India"
+info2<-filter(info,countriesAndTerritories==country)%>%arrange(dateRep)%>%group_by(dateRep)%>%summarize(total_cases = sum(cases),total_deaths = sum(deaths))%>%mutate(Cumm_total_cases = cumsum(total_cases),Cumm_total_deaths = cumsum(total_deaths))
+
+
+fig <- plot_ly(info2, x = ~dateRep, y = ~Cumm_total_cases, name = 'Total Cases', type = 'scatter', mode = 'lines+markers') 
+fig <- fig %>% add_trace(y = ~Cumm_total_deaths, name = 'Total Deaths', mode = 'lines+markers') 
+fig <-fig %>% layout(title = country&" Data today ("&Date_to_load1&")", xaxis = list(title = 'Period'),yaxis = list(title = 'Count'))
+fig
+# ggplot() + 
+#   geom_line(data = info2, aes(x = dateRep, y = Cumm_total_cases), color = "red") +
+#   geom_point(data = info2, aes(x = dateRep, y = Cumm_total_cases), color = "red")+
+#   geom_line(data = info2, aes(x = dateRep, y = Cumm_total_deaths), color = "blue") +
+#   geom_point(data = info2, aes(x = dateRep, y = Cumm_total_deaths), color = "blue")+
+#   xlab('Period') +
+#   ylab('Total Count') +
+#   labs(title=country&" Data")
+```
+
+Github_recovery_data
+```{r}
+covid_recovery <- read.csv ("D:\\Kaggle\\Covid\\Recovery_Data\\time_Series_recovered", stringsAsFactors = F)
+covid_recovery <- melt(covid_recovery, id=c("Province.State","Country.Region","Lat","Long"),variable_name = "dateRep")
+names(covid_recovery)[names(covid_recovery) == "value"] <- "total"
+covid_recovery$dateRep<- gsub('X', '0',covid_recovery$dateRep)
+covid_recovery$dateRep<-as.Date.factor (covid_recovery$dateRep,format="%m.%d.%y")
+
+covid_deaths <- read.csv ("D:\\Kaggle\\Covid\\Recovery_Data\\time_series_deaths", stringsAsFactors = F)
+covid_deaths <- melt(covid_deaths, id=c("Province.State","Country.Region","Lat","Long"),variable_name = "dateRep")
+names(covid_deaths)[names(covid_deaths) == "value"] <- "total"
+covid_deaths$dateRep<- gsub('X', '0',covid_deaths$dateRep)
+covid_deaths$dateRep<-as.Date.factor (covid_deaths$dateRep,format="%m.%d.%y")
+
+covid_confirmed <- read.csv ("D:\\Kaggle\\Covid\\Recovery_Data\\time_Series_confirmed", stringsAsFactors = F)
+covid_confirmed <- melt(covid_confirmed, id=c("Province.State","Country.Region","Lat","Long"),variable_name = "dateRep")
+names(covid_confirmed)[names(covid_confirmed) == "value"] <- "total"
+covid_confirmed$dateRep<- gsub('X', '0',covid_confirmed$dateRep)
+covid_confirmed$dateRep<-as.Date.factor (covid_confirmed$dateRep,format="%m.%d.%y")
+
+covid_recovery[,"type"]<-"Recovered"
+covid_deaths[,"type"]<-"Deaths"
+covid_confirmed[,"type"]<-"Total_Cases"
+total_world_info<-rbind(covid_recovery,covid_deaths)
+total_world_info<-rbind(total_world_info,covid_confirmed)
+total_world_info<-filter(total_world_info,total_world_info$Province.State!="Recovered")
+```
+
+
+```{r}
+# covid_recovery_info<-covid_recovery%>%group_by(dateRep)%>%summarize(total_recovered_world = sum(total_recovered)/1000)
+# covid_deaths_info<-covid_deaths%>%group_by(dateRep)%>%summarize(total_deaths_world = sum(total_deaths)/1000)
+# covid_confirmed_info<-covid_confirmed%>%group_by(dateRep)%>%summarize(total_confirmed_world = sum(total_cases)/1000)
+
+total_world_info1<-arrange(total_world_info, type,dateRep)%>%group_by(type,dateRep)%>%summarize(total_type_date = sum(total)/1000)
+
+# covid_recovery_info[,"type"]<-"recovered"
+# covid_deaths_info<-covid_deaths%>%group_by(dateRep)%>%summarize(total = sum(total_deaths)/1000)
+# covid_deaths_info[,"type"]<-"deaths"
+# covid_confirmed_info<-covid_confirmed%>%group_by(dateRep)%>%summarize(total = sum(total_cases)/1000)
+# covid_confirmed_info[,"type"]<-"confirmed"
+# 
+# total_world<-rbind(covid_recovery_info,covid_deaths_info)
+# total_world<-rbind(total_world,covid_confirmed_info)
+
+# ggplot() +
+#   geom_line(data =subset(total_world,type=="recovered"), aes(x = dateRep, y = total),size=1, colour='green' )+
+#   geom_point(data = subset(total_world,type=="recovered"), aes(x = dateRep, y = total), colour = 'green')+
+#   geom_line(data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),size=1,colour='red') +
+#   geom_point( data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),colour='red')+
+#   geom_line(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total), size=1,colour='orange') +
+#   geom_point(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total),colour='orange')+
+#   xlab('Period') +
+#   ylab('Total Count (in thousands)') +
+#   labs(title="World Data For Case, Recovery and Deaths") + theme_bw() +guides
+
+ggplot(total_world_info1, mapping=aes(x=dateRep, y=total_type_date)) + geom_line(mapping=aes(colour=type),size=1) + geom_point(mapping=aes(colour=type))+labs(title="World Data For Case, Recovery and Deaths") + theme_bw() +scale_color_hue("Line Type")+xlab('Period') +
+  ylab('Total Count (in thousands)')+scale_color_manual(
+  values=c("red", "green","orange"))
+
+
+
+```
+
+Rest of world
+```{r}
+
+
+total_world_info1<-filter(total_world_info,Country.Region!="China")
+
+total_world_info1<-arrange(total_world_info1, type,dateRep)%>%group_by(type,dateRep)%>%summarize(total_type_date = sum(total)/1000)
+
+
+# ggplot() +
+#   geom_line(data =subset(total_world,type=="recovered"), aes(x = dateRep, y = total),size=1, colour='green' )+
+#   geom_point(data = subset(total_world,type=="recovered"), aes(x = dateRep, y = total), colour = 'green')+
+#   geom_line(data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),size=1,colour='red') +
+#   geom_point( data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),colour='red')+
+#   geom_line(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total), size=1,colour='orange') +
+#   geom_point(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total),colour='orange')+
+#   xlab('Period') +
+#   ylab('Total Count (in thousands)') +
+#   labs(title="World Data For Case, Recovery and Deaths") + theme_bw() +guides
+
+ggplot(total_world_info1, mapping=aes(x=dateRep, y=total_type_date)) + geom_line(mapping=aes(colour=type),size=1) + geom_point(mapping=aes(colour=type))+labs(title="World Data For Case, Recovery and Deaths") + theme_bw() +scale_color_hue("Line Type")+xlab('Period') +
+  ylab('Total Count (in thousands)')+scale_color_manual(
+  values=c("red", "green","orange"))
+```
+Country Specific
+
+```{r}
+
+
+country_filter <- c("Germany","Spain","Italy","Iran","France","US","India")
+
+total_world_info1<-filter(total_world_info,Country.Region%in%country_filter)
+
+total_world_info1<-arrange(total_world_info1, type,dateRep)%>%group_by(Country.Region,type,dateRep)%>%summarize(total_type_date = sum(total)/1000)
+
+
+
+
+# ggplot() +
+#   geom_line(data =subset(total_world,type=="recovered"), aes(x = dateRep, y = total),size=1, colour='green' )+
+#   geom_point(data = subset(total_world,type=="recovered"), aes(x = dateRep, y = total), colour = 'green')+
+#   geom_line(data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),size=1,colour='red') +
+#   geom_point( data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),colour='red')+
+#   geom_line(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total), size=1,colour='orange') +
+#   geom_point(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total),colour='orange')+
+#   xlab('Period') +
+#   ylab('Total Count (in thousands)') +
+#   labs(title="World Data For Case, Recovery and Deaths") + theme_bw() +guides
+
+ggplot(total_world_info1, mapping=aes(x=dateRep, y=total_type_date)) + geom_line(mapping=aes(colour=type),size=1) + geom_point(mapping=aes(colour=type))+labs(title="Data For Case, Recovery and Deaths") + theme_bw() +scale_color_hue("Line Type")+xlab('Period') +
+  ylab('Total Count (in thousands)')+scale_color_manual(
+  values=c("red", "green","orange"))+facet_wrap(~Country.Region)
+
+
+```
+
+
+Country Specific
+```{r}
+country_filter = "India"
+
+total_world_info1<-filter(total_world_info,Country.Region==country_filter)
+
+total_world_info1<-arrange(total_world_info1, type,dateRep)%>%group_by(type,dateRep)%>%summarize(total_type_date = sum(total))
+
+# ggplot() +
+#   geom_line(data =subset(total_world,type=="recovered"), aes(x = dateRep, y = total),size=1, colour='green' )+
+#   geom_point(data = subset(total_world,type=="recovered"), aes(x = dateRep, y = total), colour = 'green')+
+#   geom_line(data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),size=1,colour='red') +
+#   geom_point( data = subset(total_world,type=="deaths"), aes(x = dateRep, y = total),colour='red')+
+#   geom_line(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total), size=1,colour='orange') +
+#   geom_point(data = subset(total_world,type=="confirmed"), aes(x = dateRep, y = total),colour='orange')+
+#   xlab('Period') +
+#   ylab('Total Count (in thousands)') +
+#   labs(title="World Data For Case, Recovery and Deaths") + theme_bw() +guides
+
+ggplot(total_world_info1, mapping=aes(x=dateRep, y=total_type_date)) + geom_line(mapping=aes(colour=type),size=1) + geom_point(mapping=aes(colour=type))+labs(title=country_filter&" Data For Case, Recovery and Deaths") + theme_bw() +scale_color_hue("Line Type")+xlab('Period') +
+  ylab('Total Count')+scale_color_manual(
+  values=c("red", "green","orange"))
+
+```
+Top Countries who recovered
+```{r}
+Date_to_load<-"20200419"
+Date_to_load1<-as.Date.character(Date_to_load,format = "%Y%m%d")
+total_world_info1<-filter(total_world_info,type=="Recovered")%>%group_by(Country.Region,dateRep)%>%summarize(total_recovered = sum(total))%>%filter( dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))
+
+total_world_info2<-top_n(as.data.frame(total_world_info1),15,total_recovered)
+total_world_info2$Country.Region<-as.character(total_world_info2$Country.Region)
+
+fig <- plot_ly(total_world_info2, x = total_world_info2$Country.Region, y = ~total_recovered, type = 'bar',name='Total Recovered',text = ~total_recovered, textposition = 'auto')
+
+#fig <- fig %>% add_trace(y= ~total_recovered,name = 'Cases Recovered Today',text = ~total_recovered , textposition = 'auto')
+fig <- fig %>% layout(title = "Countries with Highest number of recovered till date ("&Date_to_load1&")", xaxis = list(title = 'Countries'),yaxis = list(title = 'Recover Count'))
+
+fig
+
+
+```
+countries with highest recovery today
+
+```{r}
+total_world_info3<-filter(total_world_info,type=="Recovered")%>%group_by(Country.Region,dateRep)%>%summarize(total_recovered = sum(total))%>%filter( dateRep==as.Date.character(Date_to_load,format = "%Y%m%d")-1)
+
+total_world_info3<-left_join(total_world_info1,total_world_info3,by="Country.Region")
+
+total_world_info3[,"recovered_today"]<-total_world_info3$total_recovered.x-total_world_info3$total_recovered.y
+
+total_world_info3<-top_n(as.data.frame(total_world_info3),15,recovered_today)
+total_world_info3$Country.Region<-as.character(total_world_info3$Country.Region)
+
+fig <- plot_ly(total_world_info3, x = ~Country.Region, y = ~total_recovered.y, type = 'bar',name='Total Recovered till yesterday',text = ~total_recovered.y, textposition = 'auto')
+
+fig <- fig %>% add_trace(y= ~recovered_today,name = 'Cases Recovered Today',text = ~recovered_today , textposition = 'auto')
+fig <- fig %>% layout(title = "Countries with Highest number of recovered today ("&Date_to_load1&")", xaxis = list(title = 'Countries'),yaxis = list(title = 'Recover Count'), barmode = 'stack')
+
+fig
+```
+countries with best recovery rate
+```{r}
+total_world_info1<-arrange(total_world_info, Country.Region,type,dateRep)%>%group_by(Country.Region,type,dateRep)%>%summarize(total_country_type_date = sum(total))
+
+
+total_world_info2<-filter(total_world_info1,type=="Total_Cases")%>%filter(total_country_type_date >0)%>%group_by(Country.Region)%>%summarize(first_date_case = min(total_country_type_date),dateRep=min(dateRep))
+
+total_world_info2[,"days_from_first_case"]<-(as.Date.character(Date_to_load,format = "%Y%m%d") - total_world_info2$dateRep)
+total_world_info3<-filter(total_world_info1,dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))
+total_world_info3<-inner_join(total_world_info3,total_world_info2,"Country.Region")
+total_world_info3[,"rate"]<-round((total_world_info3$total_country_type_date)/as.numeric(total_world_info3$days_from_first_case),0)
+total_world_info2<-filter(total_world_info3,type=="Recovered")%>%filter(Country.Region!="China")%>%filter(Country.Region!="Korea, South")
+total_world_info2<-top_n(as.data.frame(total_world_info2),15,rate)
+total_world_info2<-inner_join(filter(total_world_info3,type=="Total_Cases"),total_world_info2,"Country.Region")
+
+fig <- plot_ly(total_world_info2, x = ~Country.Region, y = ~rate.x, type = 'bar',name='Case Rate (Average New Cases per Day)',text = ~rate.x, textposition = 'auto')
+fig <- fig %>% add_trace(y= ~rate.y,name = 'Recovery Rate (Average People recovered per day)',text = ~rate.y , textposition = 'auto')
+fig <- fig %>% layout(title = "Countries Recovery/Case rate. Average take starting first case appeared in that country  ("&Date_to_load1&")", xaxis = list(title = 'Countries with highest recovery rate per day '),yaxis = list(title = 'Average Case/Recovered Per day'))
+
+fig
+
+```
+case and recovery rate with population density
+
+```{r}
+
+total_world_info1<-arrange(total_world_info, Country.Region,type,dateRep)%>%group_by(Country.Region,type,dateRep)%>%summarize(total_country_type_date = sum(total))
+
+
+total_world_info2<-filter(total_world_info1,type=="Total_Cases")%>%filter(total_country_type_date >0)%>%group_by(Country.Region)%>%summarize(first_date_case = min(total_country_type_date),dateRep=min(dateRep))
+
+total_world_info2[,"days_from_first_case"]<-(as.Date.character(Date_to_load,format = "%Y%m%d") - total_world_info2$dateRep)
+total_world_info3<-filter(total_world_info1,dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))
+total_world_info3<-inner_join(total_world_info3,total_world_info2,"Country.Region")
+total_world_info3[,"rate"]<-round((total_world_info3$total_country_type_date)/as.numeric(total_world_info3$days_from_first_case),0)
+total_world_info2<-filter(total_world_info3,type=="Total_Cases")%>%filter(Country.Region!="China")
+total_world_info2<-inner_join(filter(total_world_info3,type=="Recovered"),total_world_info2,"Country.Region")
+total_world_info2[,"pct_avg_recovered_to_avg_cases"]<-round((total_world_info2$rate.x/total_world_info2$rate.y)*100,2)
+
+pop_density <- read.csv ("D:\\Kaggle\\Covid\\API_EN.POP.DNST_DS2_en_csv_v2_887474\\pop_desity.csv", stringsAsFactors = F)
+
+
+total_world_info2<-inner_join(filter(total_world_info2,total_country_type_date.y>1000),pop_density,c("Country.Region" = "Country_Name"))
+
+total_world_info3<-top_n(as.data.frame(total_world_info2),15,pct_avg_recovered_to_avg_cases)
+
+fig <- plot_ly(total_world_info3, x = ~Country.Region, y = ~pct_avg_recovered_to_avg_cases, type = 'bar',name='Avg Recovery Percentge w.r.t. Avg Cases',text = ~pct_avg_recovered_to_avg_cases, textposition = 'auto')
+
+fig <- fig %>% layout(title = "Countries with more than 1000 cases and highest recovery percentage ("&Date_to_load1&")", xaxis = list(title = 'Countries'),yaxis = list(title = 'Percentage'))
+
+fig1 <- plot_ly(total_world_info3,y= ~popdensity,x = ~Country.Region,name = 'Population Density of the Country(people per sq. km of land area)',text =~round(popdensity,2) , textposition = 'auto')
+
+
+figplot1<-subplot(fig,fig1,nrows = 2, shareX = T)
+
+total_world_info2<-filter(total_world_info2,total_country_type_date.x>0)
+total_world_info4<-top_n(as.data.frame(total_world_info2),-15,pct_avg_recovered_to_avg_cases)
+
+
+fig <- plot_ly(total_world_info4, x = ~Country.Region, y = ~pct_avg_recovered_to_avg_cases, type = 'bar',name='Avg Recovery Percentge w.r.t. Avg Cases',text = ~pct_avg_recovered_to_avg_cases, textposition = 'auto')
+
+fig <- fig %>% layout(title = "Countries with more than 1000 cases and lowest recovery percentage ("&Date_to_load1&")", xaxis = list(title = 'Countries'),yaxis = list(title = 'Percentage'))
+
+fig1 <- plot_ly(total_world_info4,y= ~popdensity,x = ~Country.Region,name = 'Population Density of the Country(people per sq. km of land area)',text =~round(popdensity,2) , textposition = 'auto')
+
+figplot2<-subplot(fig,fig1,nrows = 2, shareX = T)
+
+figplot<-subplot(figplot1,figplot2)
+
+# 
+# 
+# total_world_info1<-arrange(total_world_info, Country.Region,type,dateRep)%>%group_by(Country.Region,type,dateRep)%>%summarize(total_country_type_date = sum(total))%>%filter(type=="Total_Cases")%>%filter(dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))%>%filter(total_country_type_date >1000)
+# 
+# total_world_info1<-inner_join(total_world_info1,pop_density,c("Country.Region" = "Country_Name"))
+# total_world_info1<-top_n(as.data.frame(total_world_info1),15,popdensity)
+# 
+# fig3 <- plot_ly(total_world_info1,y= ~popdensity,x = ~Country.Region,name = 'Countries where population density is highest (people per sq. km of land area)',text =~round(popdensity,2) , textposition = 'auto')
+
+
+figplot
+
+
+
+```
+
+
+
+
+
+Total showing all 3 metrics in bar graph
+
+```{r}
+total_world_info1<-arrange(total_world_info, Country.Region,type,dateRep)%>%group_by(Country.Region,type,dateRep)%>%summarize(total_country_type_date = sum(total)) %>%filter(dateRep==as.Date.character(Date_to_load,format = "%Y%m%d"))
+
+total_world_info2<-total_world_info1 %>% filter(type == "Total_Cases")
+
+total_world_info2<-top_n(as.data.frame(total_world_info2),15,total_country_type_date)
+
+total_world_info2<-inner_join(total_world_info1,total_world_info2,by="Country.Region")
+
+total_world_info3<-filter(total_world_info2,type.x =="Recovered" || type.x =="Deaths")%>%group_by(Country.Region,dateRep.x)%>%summarize(rec_death=(sum(total_country_type_date.x)))
+
+total_world_info3<-filter(total_world_info2,type.x=="Total_Cases")%>%inner_join(total_world_info3,by=c("Country.Region","dateRep.x"))
+total_world_info3[,"Active_Cases"]<-total_world_info3$total_country_type_date.x-total_world_info3$rec_death
+
+fig <- plot_ly(data=total_world_info3, x = ~Country.Region, y = ~Active_Cases, type = 'bar',name='Total Active Cases',text = ~Active_Cases, textposition = 'auto')
+
+fig <- fig %>% add_trace(data=subset(total_world_info2,type.x=="Deaths"), y= ~total_country_type_date.x,name = 'Deaths',text = ~total_country_type_date.x , textposition = 'auto')
+
+fig <- fig %>% add_trace(data=subset(total_world_info2,type.x=="Recovered"), y= ~total_country_type_date.x,name = 'Cases Recovered',text = ~total_country_type_date.x , textposition = 'auto')
+
+fig <- fig %>% layout(title = "Countries with Highest number of cases ("&Date_to_load1&")", xaxis = list(title = 'Countries'),yaxis = list(title = 'Count'), barmode = 'stack')
+
+fig
+
+
+
+
+
+
+```
+
+US Specific Analysis-----------------------------------------------------------------------------------------------
+
+```{r}
+us_covid_Confirmed <- read.csv ("D:\\Kaggle\\Covid\\US_SPECIFIC\\US_CONFIRMED", stringsAsFactors = F)
+column_count<-length(names(us_covid_Confirmed))
+us_covid_Confirmed<-us_covid_Confirmed[,c(5,7,9,10,12:column_count)]
+us_covid_Confirmed <- melt(us_covid_Confirmed, id=c("FIPS","Province_State","Lat","Long_"),variable_name = "dateRep")
+names(us_covid_Confirmed)[names(us_covid_Confirmed) == "value"] <- "total"
+us_covid_Confirmed$dateRep<- gsub('X', '0',us_covid_Confirmed$dateRep)
+us_covid_Confirmed$dateRep<-as.Date.factor (us_covid_Confirmed$dateRep,format="%m.%d.%y")
+
+us_covid_deaths <- read.csv ("D:\\Kaggle\\Covid\\US_SPECIFIC\\US_DEATHS", stringsAsFactors = F)
+column_count<-length(names(us_covid_deaths))
+us_covid_deaths<-us_covid_deaths[,c(5,7,9,10,12:column_count)]
+us_covid_deaths <- melt(us_covid_deaths, id=c("FIPS","Province_State","Lat","Long_","Population"),variable_name = "dateRep")
+names(us_covid_deaths)[names(us_covid_deaths) == "value"] <- "total"
+us_covid_deaths$dateRep<- gsub('X', '0',us_covid_deaths$dateRep)
+us_covid_deaths$dateRep<-as.Date.factor (us_covid_deaths$dateRep,format="%m.%d.%y")
+
+FIPS <- read.csv ("D:\\Kaggle\\Covid\\US_SPECIFIC\\FIPS", stringsAsFactors = F)
+FIPS<-filter(FIPS,Country_Region=="US")
+
+```
+
+
+Graph of top 6 states with cases
+```{r}
+
+us_covid_Confirmed1<-filter(us_covid_Confirmed)%>%group_by(Province_State,dateRep)%>%summarize(total = sum(total))
+us_covid_Confirmed1<-arrange(us_covid_Confirmed1,dateRep)%>%group_by(Province_State)%>%mutate(per_day = c(0,diff(total)))
+
+us_covid_Confirmed2<-us_covid_Confirmed1%>%group_by(Province_State)%>%summarize(total = sum(total))%>%top_n(12,total)
+us_covid_Confirmed1<-inner_join(us_covid_Confirmed1,us_covid_Confirmed2,"Province_State")
+
+
+# ggplot(us_covid_Confirmed1,aes(x=dateRep,y=per_day,fill=Province_State))+geom_smooth(aes(color=Province_State))+geom_point(alpha=0.5,aes(color=Province_State)) + geom_density2d()+facet_wrap(~Province_State)
+
+ggplot(us_covid_Confirmed1,aes(x=dateRep,y=per_day))+geom_point(color="violetred4")+facet_wrap(~Province_State)+geom_smooth(method="loess",color="dodgerblue1",se=F)+theme_bw()+xlab("Period")+ylab("Cases Per Day")+labs(title="US States with highest number of cases")
+
+
+```
+bottom 10 states
+```{r}
+
+us_covid_Confirmed1<-filter(us_covid_Confirmed)%>%group_by(Province_State,dateRep)%>%summarize(total = sum(total))
+us_covid_Confirmed1<-arrange(us_covid_Confirmed1,dateRep)%>%group_by(Province_State)%>%mutate(per_day = c(0,diff(total)))
+
+us_covid_Confirmed2<-us_covid_Confirmed1%>%group_by(Province_State)%>%summarize(total = sum(total))%>%top_n(-10,total)
+us_covid_Confirmed1<-inner_join(us_covid_Confirmed1,us_covid_Confirmed2,"Province_State")
+
+
+ggplot(us_covid_Confirmed1,aes(x=dateRep,y=per_day,fill=Province_State))+geom_smooth(method = "loess",aes(color=Province_State))+geom_point(alpha=0.5,aes(color=Province_State))+stat_smooth()
+
+
+```
+
+
+
+
+When first case came for every state in US
+```{r}
+# 
+
+
+# us_covid_Confirmed1<-filter(us_covid_Confirmed)%>%group_by(Province_State,dateRep)%>%summarize(total = sum(total))
+# us_covid_Confirmed1[,"value"]<-ifelse( us_covid_Confirmed1$total>0 ,1,0)
+# 
+# 
+# 
+# statepop<-as.data.frame(statepop)
+# 
+# us_covid_Confirmed1<-inner_join(us_covid_Confirmed1,statepop,by=c("Province_State"="full"))
+# 
+#  start_date<-min(us_covid_Confirmed1$dateRep)
+#  range<-max(us_covid_Confirmed1$dateRep)-min(us_covid_Confirmed1$dateRep)
+# 
+#  for (i in 1:range)
+#  {
+#    p<-plot_usmap(data = filter(us_covid_Confirmed1,dateRep==start_date+i), values = "value", color = "red") +
+#    scale_fill_continuous(
+#      low = "white", high = "red", name = "1st Case Reported", label = scales::comma
+#    ) + labs(title="US States. Date : "&start_date+i)
+# 
+#      ggsave(
+#     filename = "map"&i&".png",
+#     plot = p,
+#     scale = 1,
+#     dpi = 100,
+#     width = 10, height = 10
+#   )
+#  }
+# 
+# 
+# system("magick -delay 80 example_1.gif *.png example_2.gif")
+# 
+
+
+
+
+
+```
+
+
+How total us cases look on Map
+```{r}
+data(continental_us_states)
+
+
+us_covid_Confirmed1<-as.data.frame(filter(us_covid_Confirmed,us_covid_Confirmed$dateRep==Date_to_load1))%>%group_by(Province_State)%>%summarize(value = sum(total))
+
+names(us_covid_Confirmed1)[names(us_covid_Confirmed1)=="Province_State"]<-"region"
+us_covid_Confirmed1$region<-tolower(us_covid_Confirmed1$region)
+
+state_choropleth(us_covid_Confirmed1, 
+                 num_colors=9,
+                 zoom = continental_us_states) +
+  scale_fill_brewer(palette="YlOrBr") +
+  labs(title = "Statewise Cases in US",
+       subtitle = "Covid19 cases",
+      # caption = "source: https://en.wikipedia.org/wiki/List_of_U.S._states_by_Hispanic_and_Latino_population",
+       fill = "Percent") 
+
+
+#for (i in us_covid_Confirmed1$dateRep) {
+#qmplot(Long_, Lat, data = us_covid_Confirmed1, colour = I('red'), size = I(0.5), darken = .1,source="osm")
+
+#}
+
+
+
+
+```
+
+Deaths in US
+
+```{r}
+
+us_covid_deaths1<-as.data.frame(filter(us_covid_deaths,us_covid_deaths$dateRep==Date_to_load1))%>%group_by(Province_State)%>%summarize(value = sum(total))
+
+names(us_covid_deaths1)[names(us_covid_deaths1)=="Province_State"]<-"region"
+us_covid_deaths1$region<-tolower(us_covid_deaths1$region)
+
+state_choropleth(us_covid_deaths1, 
+                 num_colors=9,
+                 zoom = continental_us_states) +
+  scale_fill_brewer(palette="YlOrBr") +
+  labs(title = "Statewise Deaths in US",
+       subtitle = "Covid19 Deaths",
+      # caption = "source: https://en.wikipedia.org/wiki/List_of_U.S._states_by_Hispanic_and_Latino_population",
+       fill = "Percent") 
+
+```
+population in US
+```{r}
+us_covid_deaths1<-as.data.frame(filter(us_covid_deaths,us_covid_deaths$dateRep==Date_to_load1))%>%group_by(Province_State)%>%summarize(value = sum(Population))
+
+sum(us_covid_deaths1$value)
+
+names(us_covid_deaths1)[names(us_covid_deaths1)=="Province_State"]<-"region"
+us_covid_deaths1$region<-tolower(us_covid_deaths1$region)
+
+state_choropleth(us_covid_deaths1, 
+                 num_colors=9,
+                 zoom = continental_us_states) +
+  scale_fill_brewer(palette="YlOrBr") +
+  labs(title = "Statewise Deaths in US",
+       subtitle = "Covid19 Deaths",
+      # caption = "source: https://en.wikipedia.org/wiki/List_of_U.S._states_by_Hispanic_and_Latino_population",
+       fill = "Percent") 
+
+
+```
+
+
+
+How data Deaths look on Map
+
+```{r}
+us_covid_deaths1<-as.data.frame(filter(us_covid_deaths,us_covid_deaths$dateRep==Date_to_load1))%>%filter(total>0)
+
+
+qmplot(Long_, Lat, data = us_covid_deaths1, colour = I('red'), size = I(0.5), darken = .1, legend = "How data Deaths look on Map")
+```
+
+
+How data moving on US map
+```{r}
+# us_covid_Confirmed1<-filter(us_covid_Confirmed,total>0)%>%filter(Long_!=0)
+# us_covid_Confirmed1<-arrange(us_covid_Confirmed1,Lat,Long_,dateRep)%>%group_by(Lat,Long_)%>%mutate(time_diff = c(NA,diff(dateRep)))
+# check<-filter(us_covid_Confirmed1,time_diff>1)
+# 
+# 
+#   for (i in 1: nrow(check)) {
+#     for (j in 1: check$time_diff[i]-1)
+#     {
+#         newrow<-check[i,]
+#         newrow$dateRep<-newrow$dateRep-j
+#         us_covid_Confirmed1<-rbind(us_covid_Confirmed1,newrow)
+#     }
+#   
+#   }
+# 
+#  p<- qmplot(Long_, Lat, data = us_covid_Confirmed1, colour = I('red'), size = I(0.5), darken = .1,source="osm")+labs(title = 'Day: {frame_time}')   + transition_time(us_covid_Confirmed1$dateRep) +  ease_aes('linear')
+#   animate(p, fps=3,height = 800, width =800)
+```
+
+
+How Data moving in us map deaths
+
+
+```{r}
+# us_covid_deaths<-filter(us_covid_deaths,total>0)
+#   
+# p <- qmplot(Long, Lat, data = us_covid_deaths, colour = I('red'), size = I(0), darken = .1,source="osm")+labs(title = 'Day: {frame_time}')   + transition_time(us_covid_deaths$dateRep) +  ease_aes('linear')
+#   animate(p, nframes = 200, fps=3)
+  
+```
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
